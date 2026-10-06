@@ -1,0 +1,23 @@
+# Secrets: never commit real env files, only the examples
+.env
+.env.*
+!.env.example
+!.env.prod.example
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/
+
+# Media files (test videos are generated, real ones stay out of git)
+*.mp4
+*.mov
+*.wav
+
+# macOS
+.DS_Store

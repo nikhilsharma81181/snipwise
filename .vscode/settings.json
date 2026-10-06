@@ -1,0 +1,8 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+  "python.analysis.extraPaths": ["backend"],
+  "python.analysis.autoImportCompletions": true,
+  "[python]": {
+    "editor.codeActionsOnSave": { "source.organizeImports": "explicit" }
+  }
+}

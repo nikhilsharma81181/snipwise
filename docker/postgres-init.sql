@@ -1,0 +1,1 @@
+CREATE DATABASE snipwise_test;
