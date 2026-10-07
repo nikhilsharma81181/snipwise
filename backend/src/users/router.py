@@ -19,3 +19,8 @@ async def me(user: CurrentUser, db: DbSession):
         minutes_used=used,
         minutes_limit=settings.free_minutes_per_month,
     )
+
+
+@router.delete("/me", status_code=204)
+async def delete_me(user: CurrentUser, db: DbSession):
+    await service.delete_user(db, user)

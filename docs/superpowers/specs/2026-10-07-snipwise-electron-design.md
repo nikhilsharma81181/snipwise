@@ -236,6 +236,7 @@ What changes:
 | `POST /api/plan` | `{words: [{text, start, end}], options}` | `{drops, fallbackUsed, fallbackReason}` |
 | `POST /api/chat` | `{messages, words, plan, options}` | `{message, actions}` |
 | `GET /api/usage/me` | | tokens used today, cap, resets at |
+| `DELETE /api/users/me` | | 204. Deletes the account; refresh tokens and usage rows go with it (ON DELETE CASCADE). Local project folders stay on the Mac. Added 2026-10-07 for the GDPR right to erasure. |
 
 Words carry their timings because the 20 percent rule is measured by summed word duration, not word count.
 
@@ -256,9 +257,10 @@ Modelled on the Claude Desktop app: a calm three-pane window.
 - **Sidebar** (collapsible): project list with thumbnail, title, duration, status. New project is a drop zone and a file picker.
 - **Chat thread**: progress cards during the pipeline, the proposal card after planning, user messages, agent replies with summary cards. The composer accepts text and a dropped file.
 - **Workspace** (widest): the player on top with play, scrub, original/edited toggle. Below it the transcript: kept text normal, dropped text struck through with its reason on hover, click to flip. A small audio panel with the two sliders, preset buttons, and A/B play. The Export button sits on the current plan's card and in the workspace header.
-- **Settings**: account, model download status, binaries' versions, project folder location.
+- **Settings**: account (with Delete account behind a confirm dialog), model download status, binaries' versions, project folder location.
+- **Onboarding** (decided 2026-10-07, kept minimal on purpose; no goal or preference questionnaire, per GDPR data minimisation): on first launch, before sign-in, 4 skippable slides, shown once, re-openable from Help: (1) what Snipwise does: cuts silences, filler words and bad takes; (2) you stay in control: review every cut, click to flip, ask the chat to change it, nothing is final until Export; (3) private by design: the video never leaves the Mac, only transcript text goes to the server (this is the first-run privacy notice); (4) good to know: Mac only, a one-time speech model download of about 600 MB, a daily AI limit during the beta. After sign-in the model download starts with progress shown.
 
-States the UI must handle: not logged in (sign in), sign-ups closed, model not downloaded, source file missing (relink), pipeline failed at stage N with retry, over the daily cap (shows when it resets), offline (everything local still works; plan and chat show a clear message). A first-run privacy notice states what leaves the Mac.
+States the UI must handle: not logged in (sign in), sign-ups closed, model not downloaded, source file missing (relink), pipeline failed at stage N with retry, over the daily cap (shows when it resets), offline (everything local still works; plan and chat show a clear message). The first-run privacy notice is onboarding slide 3. The chat marks agent messages as AI (EU AI Act Article 50).
 
 ## 10. Testing
 
