@@ -6,7 +6,7 @@
 
 **Architecture:** One FastAPI app in `backend/` with a folder per domain (`auth`, `users`, `projects`), async SQLAlchemy on Postgres, and Alembic migrations. Auth uses a 15-minute access JWT held in browser memory and a rotating refresh token in an httpOnly cookie. Next.js in `frontend/` is UI only and calls the API.
 
-**Tech Stack:** Python 3.14, uv, FastAPI, SQLAlchemy 2 (asyncpg), Alembic, pydantic-settings, PyJWT, bcrypt, pytest, pytest-asyncio, httpx, ruff. Postgres 17, Redis 7, MinIO in Docker Compose. Next.js (App Router, TypeScript, Tailwind).
+**Tech Stack:** Python 3.14, uv, FastAPI, SQLAlchemy 2 (asyncpg), Alembic, pydantic-settings, PyJWT, pwdlib (Argon2id), pytest, pytest-asyncio, httpx, ruff. Postgres 17, Redis 7, MinIO in Docker Compose. Next.js (App Router, TypeScript, Tailwind).
 
 **Spec:** `docs/superpowers/specs/2026-10-04-snipwise-design.md`
 
@@ -106,7 +106,7 @@ Expected: postgres, redis and minio are `running`; createbucket has exited with 
 - [ ] **Step 4: Create the backend project**
 
 Run in `backend/`: `uv init --python 3.14`, then
-`uv add "fastapi[standard]" "sqlalchemy[asyncio]" asyncpg alembic pydantic-settings pyjwt bcrypt`
+`uv add "fastapi[standard]" "sqlalchemy[asyncio]" asyncpg alembic pydantic-settings pyjwt "pwdlib[argon2]"` (switched from bcrypt on 2026-10-06: Argon2id is the modern default, no 72-byte limit)
 `uv add --dev pytest pytest-asyncio ruff`
 
 In `pyproject.toml` set `[tool.fastapi] entrypoint = "src.main:app"` and

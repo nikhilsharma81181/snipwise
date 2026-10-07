@@ -9,6 +9,7 @@ load_dotenv()
 os.environ["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"]
 
 from httpx import ASGITransport, AsyncClient
+
 from src.main import app
 
 

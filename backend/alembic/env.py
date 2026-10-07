@@ -5,6 +5,8 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import src.auth.models
+import src.users.models  # noqa: F401
 from alembic import context
 from src.config import settings
 from src.models import Base
@@ -25,8 +27,10 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-# TODO: import each feature's models.py here once tables exist, or autogenerate won't see them
+
 target_metadata = Base.metadata
+
+
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
