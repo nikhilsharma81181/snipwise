@@ -1,5 +1,7 @@
 # Snipwise: design spec
 
+> **Superseded on 2026-10-07** by [2026-10-07-snipwise-electron-design.md](2026-10-07-snipwise-electron-design.md) (Electron Mac client + thin server). Kept because the new spec reuses this document's cut rules, planner validation and eval design. Do not plan work from this file.
+
 Date: 2026-10-04
 Status: draft, waiting for Nikhil's review
 Name: **Snipwise** (chosen 2026-10-04). Folder: `snipwise/`.
