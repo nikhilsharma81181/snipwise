@@ -2,7 +2,7 @@
 
 An AI video editor for talking-head videos and narrated screen recordings, as a Mac app. Drop a raw recording in, the app transcribes it on your machine, an AI proposes a tight edit (silences, filler words and bad takes removed, jump-cut zooms, captions, cleaned-up audio), you refine it by talking to the agent or clicking the transcript, then export. Video never leaves the Mac; only transcript text goes to a small server that holds the AI prompts.
 
-Status: Electron pivot on 2026-10-07. Server auth in progress (milestone 3, Task 1). Client not started.
+Status: Electron pivot on 2026-10-07. Server auth in progress (milestone 3, Task 1). Client scaffolded in `app/` (electron-vite, React, Tailwind, shadcn), no features yet.
 
 ## Documents
 
