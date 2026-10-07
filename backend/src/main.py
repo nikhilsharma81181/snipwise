@@ -5,9 +5,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from src.auth.router import router as auth_router
 from src.config import settings
 from src.database import engine
 from src.exceptions import register_exception_handlers
+from src.users.router import router as users_router
 
 START_TIME = time.monotonic()
 
@@ -34,6 +36,9 @@ app.add_middleware(
 )
 
 register_exception_handlers(app)
+
+app.include_router(auth_router, prefix="/api")
+app.include_router(users_router, prefix="/api")
 
 
 @app.get("/api/health", tags=["health"])

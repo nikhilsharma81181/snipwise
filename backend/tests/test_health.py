@@ -13,7 +13,11 @@ async def test_unknown_route_uses_error_shape(client):
 
 async def test_cors_allows_only_frontend_origin(client):
     preflight = {"Access-Control-Request-Method": "GET"}
-    ok = await client.options("/api/health", headers={"Origin": "http://localhost:3000", **preflight})
-    bad = await client.options("/api/health", headers={"Origin": "http://evil.test", **preflight})
+    ok = await client.options(
+        "/api/health", headers={"Origin": "http://localhost:3000", **preflight}
+    )
+    bad = await client.options(
+        "/api/health", headers={"Origin": "http://evil.test", **preflight}
+    )
     assert ok.headers["access-control-allow-origin"] == "http://localhost:3000"
     assert "access-control-allow-origin" not in bad.headers
