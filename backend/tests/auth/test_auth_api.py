@@ -1,6 +1,14 @@
 import asyncio
 
-from tests.conftest import make_user
+from src.users.models import User
+
+
+async def _login(client, email="a@test.com", password="password123") -> dict:
+    await client.post("/api/auth/signup", json={"email": email, "password": password})
+    res = await client.post(
+        "/api/auth/login", json={"email": email, "password": password}
+    )
+    return res.json()
 
 
 async def test_signup_then_login(client):
@@ -14,15 +22,11 @@ async def test_signup_then_login(client):
         "/api/auth/login", json={"email": "a@test.com", "password": "password123"}
     )
     assert res.status_code == 200
-    assert res.json()["accessToken"]
-    cookie = res.headers["set-cookie"]
-    assert (
-        "refresh_token=" in cookie
-        and "HttpOnly" in cookie
-        and "Path=/api/auth" in cookie
-    )
-    # refresh token only ever travels in the cookie, never in the body
-    assert "refreshToken" not in res.json()
+    body = res.json()
+    assert body["accessToken"] and body["refreshToken"]
+    assert body["user"]["email"] == "a@test.com"
+    # the client is electron, not a browser: tokens come in the body, no cookies
+    assert "set-cookie" not in res.headers
 
 
 async def test_duplicate_email_ignores_case_and_spaces(client):
@@ -60,36 +64,50 @@ async def test_long_unicode_password_works(client):
 
 
 async def test_refresh_rotates_and_old_token_stops_working(client):
-    await make_user(client)  # logs in, the client keeps the cookie
-    old = client.cookies.get("refresh_token")
+    old = (await _login(client))["refreshToken"]
 
-    first = await client.post("/api/auth/refresh")
+    first = await client.post("/api/auth/refresh", json={"refreshToken": old})
     assert first.status_code == 200
-    assert client.cookies.get("refresh_token") != old
+    assert first.json()["accessToken"]
+    assert first.json()["refreshToken"] != old
 
     # replay the old one
-    client.cookies.set("refresh_token", old, path="/api/auth")
-    again = await client.post("/api/auth/refresh")
+    again = await client.post("/api/auth/refresh", json={"refreshToken": old})
     assert again.status_code == 401
     assert again.json()["code"] == "invalid_refresh_token"
 
 
+async def test_refresh_with_junk_token(client):
+    res = await client.post("/api/auth/refresh", json={"refreshToken": "junk"})
+    assert res.status_code == 401
+    assert res.json()["code"] == "invalid_refresh_token"
+
+
 async def test_two_refreshes_at_once_only_one_wins(client):
-    await make_user(client)
+    token = (await _login(client))["refreshToken"]
     a, b = await asyncio.gather(
-        client.post("/api/auth/refresh"), client.post("/api/auth/refresh")
+        client.post("/api/auth/refresh", json={"refreshToken": token}),
+        client.post("/api/auth/refresh", json={"refreshToken": token}),
     )
     assert sorted([a.status_code, b.status_code]) == [200, 401]
 
 
 async def test_logout_revokes_and_is_idempotent(client):
-    await make_user(client)
-    token = client.cookies.get("refresh_token")
-    assert (await client.post("/api/auth/logout")).status_code == 204
-    assert (await client.post("/api/auth/logout")).status_code == 204
+    token = (await _login(client))["refreshToken"]
+    assert (
+        await client.post("/api/auth/logout", json={"refreshToken": token})
+    ).status_code == 204
+    assert (
+        await client.post("/api/auth/logout", json={"refreshToken": token})
+    ).status_code == 204
+    # junk is fine too, logout never fails
+    assert (
+        await client.post("/api/auth/logout", json={"refreshToken": "junk"})
+    ).status_code == 204
 
-    client.cookies.set("refresh_token", token, path="/api/auth")
-    assert (await client.post("/api/auth/refresh")).status_code == 401
+    assert (
+        await client.post("/api/auth/refresh", json={"refreshToken": token})
+    ).status_code == 401
 
 
 async def test_me_requires_a_valid_token(client, user_headers):
@@ -102,3 +120,15 @@ async def test_me_requires_a_valid_token(client, user_headers):
     assert me.json()["email"] == "a@test.com"
     assert me.json()["minutesUsed"] == 0
     assert me.json()["minutesLimit"] == 60
+
+
+# google / email-link users have no password, password login must just say "invalid"
+async def test_password_login_on_account_without_password(client, db):
+    db.add(User(email="g@test.com", firebase_uid="firebase-uid-1"))
+    await db.commit()
+
+    res = await client.post(
+        "/api/auth/login", json={"email": "g@test.com", "password": "password123"}
+    )
+    assert res.status_code == 401
+    assert res.json()["code"] == "invalid_credentials"

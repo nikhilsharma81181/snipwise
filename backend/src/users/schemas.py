@@ -8,7 +8,8 @@ class UserOut(CamelModel):
     id: uuid.UUID
     email: str
     role: UserRole
-    
+
+
 class MeOut(UserOut):
     minutes_used: float
     minutes_limit: int

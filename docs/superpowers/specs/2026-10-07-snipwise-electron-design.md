@@ -28,7 +28,7 @@ Positioning against Descript, Gling, Screen Studio and CapCut: fewer features, a
 - Preview on the proxy that skips dropped segments.
 - Audio enhancement with two sliders (clean-up, tone) and a 20-second A/B excerpt.
 - Export from the original file at native resolution: cuts, jump-cut zooms, burned-in captions, enhanced audio.
-- Email and password sign-up and login inside the app, a daily AI token cap per user, rate limits on the server.
+- Sign-in with Google, an email login link (Firebase handles identity) or email and password (the server's own); the FastAPI server owns users and tokens, a daily AI token cap per user, rate limits on the server.
 - A signed, notarized `.dmg` with a sign-up cap for the beta.
 - An eval set that scores the planner on Nikhil's own recordings.
 
@@ -105,7 +105,7 @@ Rules that follow from the stack:
 | `chat.send(id, text)` | Sends a turn to the server, applies returned actions, saves chat |
 | `audio.preview(id, params)` | Renders the 20-second A/B excerpt |
 | `export.start(id, planVersion)`, `export.cancel(id)` | Final render, emits progress |
-| `auth.signup(email, password)`, `auth.login(email, password)`, `auth.logout()`, `auth.me()` | Account |
+| `auth.signIn(method)`, `auth.logout()`, `auth.me()` | Account. Google and the email link run in the system browser and hand back through `snipwise://` |
 | `shell.reveal(path)` | Show a file in Finder |
 | events: `progress`, `stageDone`, `error` | Streamed from main |
 
@@ -226,7 +226,8 @@ What changes:
 
 - **Removed:** projects, uploads, pipeline, transcripts, edit_plans, renders and stage_runs tables and routes. MinIO and Celery leave `docker-compose.yml`. Celery Beat jobs are gone.
 - **Refresh token delivery:** the client is not a browser, so login and refresh return both tokens in the response body, and the Electron main process keeps them in `safeStorage`. Nothing is set in HTTP headers for the client to store.
-- **Sign-up:** `POST /api/auth/signup` is the only way to get an account. It counts users inside the sign-up transaction and returns 403 `signup_closed` once `beta_signup_limit` (default 50) is reached.
+- **Identity (changed 2026-10-07, "ornn pattern"):** no passwords. Firebase Auth does Google sign-in and the email login link (Firebase sends the email). The client sends the Firebase ID token to `POST /api/auth/firebase {idToken}`. The server verifies it with `firebase-admin` (behind a small `IdentityVerifier` interface with a fake for tests), finds or creates the user by `firebase_uid`, and returns its own access and refresh tokens plus the user. Email and password stays as a third sign-in method (kept for backend learning, decided 2026-10-07): `POST /api/auth/signup` and `POST /api/auth/login` remain. `users.password_hash` becomes nullable (Firebase-only users have none) and `users.firebase_uid` (unique, nullable) is added. One account per email: a Firebase sign-in with a verified email links to an existing password account; password sign-up for an email that already exists returns 409; password login on an account with no password returns the normal 401. Google sign-in cannot run inside an Electron window, so both methods open the system browser and hand back to the app through `snipwise://` with a short-lived, single-use value, never the server's tokens. Own Google OAuth and own magic links may replace Firebase later.
+- **Sign-up:** the first successful `POST /api/auth/firebase` for a new `firebase_uid` creates the account. It counts users inside that transaction and returns 403 `signup_closed` once `beta_signup_limit` (default 50) is reached.
 - **New table `usage_events`:** id, user_id, kind (`plan` or `chat`), model, input_tokens, output_tokens, created_at. The daily cap is a sum over this table.
 - **New endpoints:**
 
@@ -257,7 +258,7 @@ Modelled on the Claude Desktop app: a calm three-pane window.
 - **Workspace** (widest): the player on top with play, scrub, original/edited toggle. Below it the transcript: kept text normal, dropped text struck through with its reason on hover, click to flip. A small audio panel with the two sliders, preset buttons, and A/B play. The Export button sits on the current plan's card and in the workspace header.
 - **Settings**: account, model download status, binaries' versions, project folder location.
 
-States the UI must handle: not logged in (sign-up or login), sign-ups closed, model not downloaded, source file missing (relink), pipeline failed at stage N with retry, over the daily cap (shows when it resets), offline (everything local still works; plan and chat show a clear message). A first-run privacy notice states what leaves the Mac.
+States the UI must handle: not logged in (sign in), sign-ups closed, model not downloaded, source file missing (relink), pipeline failed at stage N with retry, over the daily cap (shows when it resets), offline (everything local still works; plan and chat show a clear message). A first-run privacy notice states what leaves the Mac.
 
 ## 10. Testing
 

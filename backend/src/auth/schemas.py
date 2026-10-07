@@ -14,10 +14,14 @@ class LoginRequest(CamelModel):
     password: str = Field(max_length=128)
 
 
-class LoginResponse(CamelModel):
+class RefreshRequest(CamelModel):
+    refresh_token: str
+
+
+class TokenPair(CamelModel):
     access_token: str
+    refresh_token: str
+
+
+class LoginResponse(TokenPair):
     user: UserOut
-
-
-class AccessTokenResponse(CamelModel):
-    access_token: str
