@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, nativeTheme } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { buildMenu } from './menu'
+import { registerAuthIpc } from './auth/ipc'
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -54,6 +55,7 @@ app.whenReady().then(() => {
   })
 
   buildMenu()
+  registerAuthIpc()
   createWindow()
 
   app.on('activate', () => {

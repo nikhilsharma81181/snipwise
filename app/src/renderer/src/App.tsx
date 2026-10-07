@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { AuthResult, User } from '../../preload'
 import { PanelLeft, Search } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import LoginScreen from '@/components/LoginScreen'
@@ -37,24 +38,78 @@ function ToolbarButton({
 
 export default function App(): React.JSX.Element {
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  // null = logged out. Fake for now, real user comes from the server once auth is wired.
-  const [user, setUser] = useState<{ name: string; email: string; plan: string } | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+  // true until we know if there's a saved session, so the login screen doesn't flash
+  const [checking, setChecking] = useState(true)
+  const [startError, setStartError] = useState<string | null>(null)
+
+  function applySession(res: AuthResult<User>): void {
+    if (res.ok) {
+      setUser(res.data)
+      setStartError(null)
+    } else {
+      setUser(null)
+      // session_expired just means "log in". Offline is worth telling the user.
+      setStartError(res.error.code === 'network_error' ? res.error.message : null)
+    }
+    setChecking(false)
+  }
+
+  // App start: main refreshes with the stored token and loads /users/me
+  useEffect(() => {
+    let cancelled = false
+    window.snipwise.auth.me().then((res) => {
+      if (!cancelled) applySession(res)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // main revokes the token on the server and deletes it locally (locally even if the
+  // server can't be reached), then we show the login screen
+  async function handleLogout(): Promise<void> {
+    try {
+      await window.snipwise.auth.logout()
+    } catch {
+      // IPC itself broke. Nothing we can do here, still leave the app.
+    }
+    setUser(null)
+    setStartError(null)
+  }
+
+  function retrySession(): void {
+    setChecking(true)
+    window.snipwise.auth.me().then(applySession)
+  }
 
   // Cmd+B is a menu accelerator in main, it reaches us over IPC
   useEffect(() => window.snipwise.onToggleSidebar(() => setSidebarOpen((open) => !open)), [])
 
+  if (checking) {
+    return <div className="drag h-full bg-background" />
+  }
+
   if (!user) {
     return (
       <LoginScreen
-        onLoggedIn={(email) => setUser({ name: email.split('@')[0], email, plan: 'Free' })}
+        notice={startError}
+        onRetry={retrySession}
+        onLoggedIn={(u) => {
+          setUser(u)
+          setStartError(null)
+        }}
       />
     )
   }
 
+  // TODO: server has no name or plan yet
+  const sidebarUser = { name: user.email.split('@')[0], email: user.email, plan: 'Free' }
+
   return (
     <TooltipProvider delayDuration={400}>
       <div className="relative flex h-full text-foreground">
-        <Sidebar open={sidebarOpen} user={user} onLogout={() => setUser(null)} />
+        <Sidebar open={sidebarOpen} user={sidebarUser} onLogout={handleLogout} />
 
         <div className="drag flex-1 bg-background" />
 

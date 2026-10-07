@@ -1,13 +1,28 @@
 import { useState } from 'react'
 import { z } from 'zod'
-import { ArrowLeft, ArrowRight, CheckCircle2, Mail } from 'lucide-react'
+import { Loader2, Lock, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import type { AuthResult, User } from '../../../preload'
 
-// Same flow as project ornn: Google or an emailed login link, no passwords.
-// No account yet? It gets created on first login, so there's no separate sign-up.
+// Email + password, talking to the real server through main (window.snipwise.auth).
+// Google and the email login link come later with Firebase, shown as "Coming soon".
+// The old "check your email" view is in git history (commit 0b679e3).
 
 const emailSchema = z.email('Enter a valid email')
+
+// same rules as the server (backend/src/auth/schemas.py)
+const loginSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(1, 'Enter your password').max(128)
+})
+const signupSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(8, 'Password must be at least 8 characters').max(128)
+})
+
+type Field = 'email' | 'password'
+type FieldErrors = Partial<Record<Field, string>>
 
 function GoogleIcon(): React.JSX.Element {
   return (
@@ -32,33 +47,78 @@ function GoogleIcon(): React.JSX.Element {
   )
 }
 
-type Props = { onLoggedIn: (email: string) => void }
+function ComingSoon(): React.JSX.Element {
+  return (
+    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+      Coming soon
+    </span>
+  )
+}
 
-export default function LoginScreen({ onLoggedIn }: Props): React.JSX.Element {
+type Props = {
+  onLoggedIn: (user: User) => void
+  // shown above the form, e.g. server unreachable at app start
+  notice?: string | null
+  onRetry?: () => void
+}
+
+export default function LoginScreen({ onLoggedIn, notice, onRetry }: Props): React.JSX.Element {
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [isSignup, setIsSignup] = useState(false)
+  const [pending, setPending] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [error, setError] = useState<string | null>(null)
-  const [linkSentTo, setLinkSentTo] = useState<string | null>(null)
 
-  function handleGoogle(): void {
-    // TODO: real google sign-in (system browser + redirect back to the app)
-    onLoggedIn('nikhil@gmail.com')
-  }
-
-  function handleSendLink(e: React.FormEvent): void {
+  async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault()
-    const result = emailSchema.safeParse(email.trim())
-    if (!result.success) {
-      setError(result.error.issues[0].message)
+    if (pending) return
+
+    const schema = isSignup ? signupSchema : loginSchema
+    const parsed = schema.safeParse({ email: email.trim(), password })
+    if (!parsed.success) {
+      const errs: FieldErrors = {}
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0] as Field
+        errs[field] ??= issue.message
+      }
+      setFieldErrors(errs)
+      setError(null)
       return
     }
+
+    setPending(true)
+    setFieldErrors({})
     setError(null)
-    // TODO: ask the server to email the link. For now we just pretend it went out.
-    setLinkSentTo(result.data)
+
+    const { email: cleanEmail, password: pw } = parsed.data
+    let res: AuthResult<User>
+    try {
+      res = isSignup
+        ? await window.snipwise.auth.signup(cleanEmail, pw)
+        : await window.snipwise.auth.login(cleanEmail, pw)
+    } catch {
+      // only if IPC itself breaks, main already turns server errors into results
+      res = { ok: false, error: { code: 'internal_error', message: 'Something went wrong' } }
+    }
+
+    if (res.ok) {
+      onLoggedIn(res.data)
+      return
+    }
+
+    setPending(false)
+    // server's 422 comes with per-field messages, show them under the inputs
+    if (res.error.fields) {
+      setFieldErrors({ email: res.error.fields.email, password: res.error.fields.password })
+    }
+    if (!res.error.fields?.email && !res.error.fields?.password) setError(res.error.message)
   }
 
-  function resetEmail(): void {
-    setLinkSentTo(null)
-    setEmail('')
+  function toggleSignup(): void {
+    setIsSignup((v) => !v)
+    setFieldErrors({})
+    setError(null)
   }
 
   return (
@@ -67,43 +127,42 @@ export default function LoginScreen({ onLoggedIn }: Props): React.JSX.Element {
       <div className="drag h-12 shrink-0" />
 
       <div className="flex flex-1 items-center justify-center px-6 pb-12">
-        {linkSentTo ? (
-          <div className="w-full max-w-sm text-center">
-            <CheckCircle2 className="mx-auto size-10 text-muted-foreground" />
-            <h1 className="mt-5 text-2xl font-semibold tracking-tight">Check your email</h1>
-            <p className="mt-2 text-sm text-muted-foreground">We sent a login link to</p>
-            <p className="mt-0.5 text-sm font-medium">{linkSentTo}</p>
-            <p className="mt-6 text-xs text-muted-foreground">
-              Click the link in the email to sign in. Check spam if you don&apos;t see it.
+        <div className="w-full max-w-sm">
+          <div className="text-center">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {isSignup ? 'Create your account' : 'Welcome to Snipwise'}
+            </h1>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {isSignup ? 'Sign up to start editing.' : 'Sign in to keep editing.'}
             </p>
-            <button
-              onClick={resetEmail}
-              className="mt-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="size-3.5" />
-              Use a different email
-            </button>
           </div>
-        ) : (
-          <div className="w-full max-w-sm">
-            <div className="text-center">
-              <h1 className="text-2xl font-semibold tracking-tight">Welcome to Snipwise</h1>
-              <p className="mt-1.5 text-sm text-muted-foreground">Sign in to keep editing.</p>
+
+          {notice && (
+            <div className="mt-6 flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5 text-sm">
+              <span className="text-muted-foreground">{notice}</span>
+              {onRetry && (
+                <button onClick={onRetry} className="shrink-0 text-foreground hover:underline">
+                  Try again
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="mt-8 flex flex-col gap-4">
+            <Button variant="outline" className="h-11 w-full gap-3" disabled>
+              <GoogleIcon />
+              Continue with Google
+              <ComingSoon />
+            </Button>
+
+            <div className="flex items-center gap-4">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">or</span>
+              <div className="h-px flex-1 bg-border" />
             </div>
 
-            <div className="mt-8 flex flex-col gap-4">
-              <Button variant="outline" className="h-11 w-full gap-3" onClick={handleGoogle}>
-                <GoogleIcon />
-                Continue with Google
-              </Button>
-
-              <div className="flex items-center gap-4">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-xs text-muted-foreground">or</span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-
-              <form onSubmit={handleSendLink} noValidate className="flex flex-col gap-3">
+            <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3">
+              <div>
                 <div className="relative">
                   <Mail className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -111,28 +170,78 @@ export default function LoginScreen({ onLoggedIn }: Props): React.JSX.Element {
                     autoComplete="email"
                     placeholder="name@company.com"
                     value={email}
+                    disabled={pending}
+                    aria-invalid={!!fieldErrors.email}
                     onChange={(e) => {
                       setEmail(e.target.value)
+                      setFieldErrors((f) => ({ ...f, email: undefined }))
                       setError(null)
                     }}
                     className="h-11 pl-10"
                   />
                 </div>
+                {fieldErrors.email && (
+                  <p className="mt-1.5 text-xs text-destructive">{fieldErrors.email}</p>
+                )}
+              </div>
 
-                {error && <p className="text-sm text-destructive">{error}</p>}
+              <div>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="password"
+                    autoComplete={isSignup ? 'new-password' : 'current-password'}
+                    placeholder={isSignup ? 'Password (at least 8 characters)' : 'Password'}
+                    value={password}
+                    disabled={pending}
+                    aria-invalid={!!fieldErrors.password}
+                    onChange={(e) => {
+                      setPassword(e.target.value)
+                      setFieldErrors((f) => ({ ...f, password: undefined }))
+                      setError(null)
+                    }}
+                    className="h-11 pl-10"
+                  />
+                </div>
+                {fieldErrors.password && (
+                  <p className="mt-1.5 text-xs text-destructive">{fieldErrors.password}</p>
+                )}
+              </div>
 
-                <Button type="submit" className="h-11 w-full" disabled={!email.trim()}>
-                  Send me a login link
-                  <ArrowRight />
-                </Button>
-              </form>
-            </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <p className="mt-6 text-center text-xs text-muted-foreground">
-              No account? One will be created automatically.
-            </p>
+              <Button
+                type="submit"
+                className="h-11 w-full"
+                disabled={pending || !email.trim() || !password}
+              >
+                {pending && <Loader2 className="animate-spin" />}
+                {isSignup ? 'Create account' : 'Log in'}
+              </Button>
+            </form>
+
+            <button
+              type="button"
+              disabled
+              className="flex items-center justify-center gap-2 text-sm text-muted-foreground opacity-60"
+            >
+              Email me a login link instead
+              <ComingSoon />
+            </button>
           </div>
-        )}
+
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            {isSignup ? 'Already have an account? ' : "Don't have an account? "}
+            <button
+              type="button"
+              onClick={toggleSignup}
+              disabled={pending}
+              className="text-foreground underline-offset-4 hover:underline"
+            >
+              {isSignup ? 'Log in' : 'Sign up'}
+            </button>
+          </p>
+        </div>
       </div>
     </div>
   )
