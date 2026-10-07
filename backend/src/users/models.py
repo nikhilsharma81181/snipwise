@@ -18,7 +18,9 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
     email: Mapped[str] = mapped_column(String(255), unique=True)
-    password_hash: Mapped[str] = mapped_column(String(255))
+    # None for google / email-link users
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    firebase_uid: Mapped[str | None] = mapped_column(String(128), unique=True)
     # stored as plain text, not a postgres enum, so adding a role later needs no migration
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, native_enum=False, length=10), default=UserRole.USER

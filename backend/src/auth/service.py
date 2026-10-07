@@ -52,7 +52,7 @@ async def signup(db: AsyncSession, email: str, password: str) -> User:
 
 async def login(db: AsyncSession, email: str, password: str) -> tuple[User, str, str]:
     user = await db.scalar(select(User).where(User.email == _clean_email(email)))
-    if user is None:
+    if user is None or user.password_hash is None:
         await verify_password(password, _DUMMY_HASH)
         raise InvalidCredentials()
     if not await verify_password(password, user.password_hash):
