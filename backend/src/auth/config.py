@@ -12,6 +12,7 @@ class AuthSettings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
     beta_signup_limit: int = 50
+    rate_limit_per_minute: int = 15
 
 
 auth_settings = AuthSettings()  # pyright: ignore[reportCallIssue]

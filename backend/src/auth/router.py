@@ -1,6 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from src.auth import service
+from src.auth.dependencies import auth_rate_limit
 from src.auth.schemas import (
     LoginRequest,
     LoginResponse,
@@ -11,7 +12,9 @@ from src.auth.schemas import (
 from src.database import DbSession
 from src.users.schemas import UserOut
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(
+    prefix="/auth", tags=["auth"], dependencies=[Depends(auth_rate_limit)]
+)
 
 
 @router.post("/signup", status_code=201, response_model=UserOut)

@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 # so tests can never touch the dev database
 load_dotenv()
 os.environ["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"]
+# same for redis: db 15 is only for tests, dev uses db 0
+os.environ["REDIS_URL"] = "redis://localhost:6379/15"
 
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -16,10 +18,14 @@ import src.users.models  # noqa: F401
 from src.database import SessionLocal, engine
 from src.main import app
 from src.models import Base
+from src.redis_client import redis_client
 
 # belt and braces: refuse to run if we somehow ended up on the dev db
 assert engine.url.database == "snipwise_test", (
     f"tests must use snipwise_test, got {engine.url.database}"
+)
+assert redis_client.connection_pool.connection_kwargs["db"] == 15, (
+    "tests must use redis db 15"
 )
 
 
@@ -50,6 +56,13 @@ async def clean_tables():
     if names:
         async with engine.begin() as conn:
             await conn.execute(text(f"TRUNCATE {names} CASCADE"))
+
+
+# and wipe rate limit counters, so one test's requests don't count against the next
+@pytest.fixture(autouse=True)
+async def clean_redis():
+    await redis_client.flushdb()
+    yield
 
 
 @pytest.fixture

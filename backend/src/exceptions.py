@@ -58,6 +58,12 @@ class PayloadTooLarge(AppError):
     message = "File is too large"
 
 
+class TooManyRequests(AppError):
+    status_code = 429
+    code = "rate_limited"
+    message = "Too many requests, try again in a minute"
+
+
 def _error_response(status_code: int, code: str, message: str, **extra) -> JSONResponse:
     return JSONResponse(
         status_code=status_code, content={"code": code, "message": message, **extra}

@@ -3,12 +3,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from redis.exceptions import RedisError
 from sqlalchemy import text
 
 from src.auth.router import router as auth_router
 from src.config import settings
 from src.database import engine
 from src.exceptions import register_exception_handlers
+from src.redis_client import redis_client
 from src.users.router import router as users_router
 
 START_TIME = time.monotonic()
@@ -20,8 +22,16 @@ async def lifespan(app: FastAPI):
         await connection.execute(text("SELECT 1"))
         print("db connected")
 
+    # redis is only for rate limits, so the app still starts without it (fail open)
+    try:
+        await redis_client.ping()
+        print("redis connected")
+    except RedisError:
+        print("redis not reachable, rate limits are off")
+
     yield
 
+    await redis_client.aclose()
     await engine.dispose()
 
 
