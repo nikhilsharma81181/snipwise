@@ -7,9 +7,11 @@ from src.auth.exceptions import (
     EmailAlreadyExists,
     InvalidCredentials,
     InvalidRefreshToken,
+    SignupClosed,
 )
 from src.auth.models import RefreshToken
 from src.auth.utils import (
+    auth_settings,
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
@@ -39,6 +41,7 @@ async def _issue_refresh_token(db: AsyncSession, user: User) -> str:
 
 
 async def signup(db: AsyncSession, email: str, password: str) -> User:
+    await _check_signup_open(db)
     user = User(email=_clean_email(email), password_hash=await hash_password(password))
     db.add(user)
     try:
@@ -111,3 +114,9 @@ async def logout(db: AsyncSession, raw_refresh_token: str | None) -> None:
         .values(revoked_at=func.now())
     )
     await db.commit()
+
+
+async def _check_signup_open(db: AsyncSession) -> None:
+    user_count = await db.scalar(select(func.count()).select_from(User)) or 0
+    if user_count >= auth_settings.beta_signup_limit:
+        raise SignupClosed()

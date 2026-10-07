@@ -19,7 +19,7 @@ Positioning against Descript, Gling, Screen Studio and CapCut: fewer features, a
 
 ### In version 1
 
-- Import one MP4 or MOV per project, any length, any resolution. Must have an audio track.
+- Import one or more MP4 or MOV clips per project, joined in the order the user sets, any length, any resolution. Each clip must have an audio track. (Changed 2026-10-07 from one file per project; see section 15.)
 - Local pipeline: probe, 720p proxy, audio extraction, transcription with word timestamps, silence detection.
 - AI edit plan from the server: fillers and bad takes as word-index ranges with reasons.
 - Chat refinement: the user describes what to change; the agent revises the plan, audio settings or caption settings.
@@ -205,7 +205,7 @@ Up to three passes from the **original** file at native resolution and fps. When
 
 ### Chat agent (server side)
 
-`POST /api/chat` receives the last 20 chat turns, the numbered word list, the current plan and the project options. The server runs a tool-calling loop (at most three tool rounds) with these tools:
+`POST /api/chat` receives the last 20 turns of the current thread, the numbered word list, the current plan, the project options and the last 30 history entries (section 15). The server runs a tool-calling loop (at most three tool rounds) with these tools:
 
 | Tool | Arguments | Client effect |
 |---|---|---|
@@ -254,9 +254,10 @@ Evals live in `backend/evals/`: 10 to 15 of Nikhil's recordings with hand-labell
 
 Modelled on the Claude Desktop app: a calm three-pane window.
 
-- **Sidebar** (collapsible): project list with thumbnail, title, duration, status. New project is a drop zone and a file picker.
+- **Home** (main area when no project is open): an empty state with one large "New project" card that also accepts dropped videos; once projects exist, a grid of project cards (thumbnail, name, total length, status). Details in section 15.
+- **Sidebar** (collapsible): projects, each expanding to its chat threads, with "New chat" per project.
 - **Chat thread**: progress cards during the pipeline, the proposal card after planning, user messages, agent replies with summary cards. The composer accepts text and a dropped file.
-- **Workspace** (widest): the player on top with play, scrub, original/edited toggle. Below it the transcript: kept text normal, dropped text struck through with its reason on hover, click to flip. A small audio panel with the two sliders, preset buttons, and A/B play. The Export button sits on the current plan's card and in the workspace header.
+- **Workspace** (widest): tabs for Clips and History next to the player. The player on top with play, scrub, original/edited toggle. Below it the transcript: kept text normal, dropped text struck through with its reason on hover, click to flip. A small audio panel with the two sliders, preset buttons, and A/B play. The Export button sits on the current plan's card and in the workspace header.
 - **Settings**: account (with Delete account behind a confirm dialog), model download status, binaries' versions, project folder location.
 - **Onboarding** (decided 2026-10-07, kept minimal on purpose; no goal or preference questionnaire, per GDPR data minimisation): on first launch, before sign-in, 4 skippable slides, shown once, re-openable from Help: (1) what Snipwise does: cuts silences, filler words and bad takes; (2) you stay in control: review every cut, click to flip, ask the chat to change it, nothing is final until Export; (3) private by design: the video never leaves the Mac, only transcript text goes to the server (this is the first-run privacy notice); (4) good to know: Mac only, a one-time speech model download of about 600 MB, a daily AI limit during the beta. After sign-in the model download starts with progress shown.
 
@@ -324,3 +325,37 @@ Pace: about one milestone a week. Milestones 3 and 4 are Nikhil's backend work a
 | Electron memory grows over a long session. | Watch in milestone 5 with a 60-minute file. Keep transcript rendering virtualised. |
 | Planner quality on retakes is unproven. | Evals from milestone 3. The user reviews every cut before export. |
 | Gemini free tier uses inputs for training. | Free tier for Nikhil's tests only. Paid tier before any beta user. |
+
+## 15. Amendment 2026-10-07: clips, threads and history
+
+Decided with Nikhil in a brainstorm on 2026-10-07. Where this section and an earlier one disagree, this one wins.
+
+### New project flow
+
+1. Home shows the "New project" card (or the grid plus a "New project" button).
+2. One screen: drop or pick clips; they appear as a list with thumbnail and duration and a total at the bottom; drag to reorder; click a clip to preview it; a name field pre-filled from the first file name. One button: Create project.
+3. The project opens in the three-pane layout with a first chat thread, and the pipeline starts. Progress cards appear in that thread.
+
+Clips are fixed at creation in version 1. Adding or reordering clips after the plan exists is after v1 (it would invalidate word indexes).
+
+### Clips in the project folder
+
+- `project.json` holds `clips: [{id, order, path, sizeBytes, partialHash, probe}]` instead of a single `source`. Sources are referenced, never copied (relink rules unchanged, per clip).
+- Per-clip stage outputs live in `clips/<clipId>/`: `thumb.jpg`, `proxy.mp4`, `audio.wav`, `transcript.json`. Probe, proxy and transcribe run per clip.
+- A `merge` stage writes the project-level `transcript.json`: one word list in clip order, each word with its `clipId` and times on the joined timeline (a clip's offset is the sum of the earlier clips' durations). Plans keep using indexes into this merged list, so the planner and cut rules do not change.
+- Silences are detected within each clip only; the boundary between two clips is always a cut point.
+- Preview plays the clip proxies in sequence. Export trims each clip's original and joins all kept segments with the existing `concat`; clips whose resolution or fps differ from the first clip are scaled and converted to match it.
+
+### Chat threads with one shared plan
+
+- A project has any number of threads in `threads/<threadId>.json` (`title` from the first message, `createdAt`, `turns`). `chat.json` is replaced by this folder.
+- All threads share one plan history in `plans/`. Every change from any thread, click or restore creates a new version; `plans/vN.json` gains `threadId` (null for clicks, restores and the plan stage).
+- Optimistic concurrency: each chat request carries `baseVersion`. If the current version moved on while the server was answering (another thread changed it), the client discards the actions, re-sends once with the latest plan and history, and only applies actions whose base is still current.
+- Heavy stages (probe, proxy, transcribe, merge, silences) are per project, never per thread; a new thread reuses them.
+
+### History log
+
+- `history.jsonl` in the project folder, append-only, one JSON object per line: `{id, at, actor, type, summary, planVersion}`. `actor` is `pipeline`, `user` or `thread:<threadId>`. Types: `project_created`, `stage_done`, `plan_created`, `plan_restored`, `segment_flipped`, `audio_changed`, `captions_changed`, `export_done`, `thread_created`.
+- Summaries are short and human readable ("cut the second pricing explanation, 12:04 → 11:20"). They never contain file names or paths, because the last 30 entries are sent to the server with every chat request so a thread knows what other threads already did.
+- The History tab shows the log as a timeline, newest first, Figma style. Entries with a plan version have Restore, which creates a new version and a `plan_restored` entry.
+

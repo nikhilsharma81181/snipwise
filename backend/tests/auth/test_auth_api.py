@@ -1,5 +1,6 @@
 import asyncio
 
+from src.auth.config import auth_settings
 from src.users.models import User
 
 
@@ -132,3 +133,24 @@ async def test_password_login_on_account_without_password(client, db):
     )
     assert res.status_code == 401
     assert res.json()["code"] == "invalid_credentials"
+
+
+async def test_signup_closed_when_beta_is_full(client, monkeypatch):
+    monkeypatch.setattr(auth_settings, "beta_signup_limit", 1)
+
+    first = await client.post(
+        "/api/auth/signup", json={"email": "a@test.com", "password": "password123"}
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        "/api/auth/signup", json={"email": "b@test.com", "password": "password123"}
+    )
+    assert second.status_code == 403
+    assert second.json()["code"] == "signup_closed"
+
+    # people already in can still log in
+    login = await client.post(
+        "/api/auth/login", json={"email": "a@test.com", "password": "password123"}
+    )
+    assert login.status_code == 200

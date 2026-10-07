@@ -1,4 +1,4 @@
-from src.exceptions import Conflict, Unauthorized
+from src.exceptions import Conflict, Forbidden, Unauthorized
 
 
 class InvalidCredentials(Unauthorized):
@@ -24,3 +24,8 @@ class AuthenticationRequired(Unauthorized):
 class InvalidAccessToken(Unauthorized):
     code = "invalid_token"
     message = "Invalid or expired token"
+
+
+class SignupClosed(Forbidden):
+    code = "signup_closed"
+    message = "Sign-ups are closed for the beta"
