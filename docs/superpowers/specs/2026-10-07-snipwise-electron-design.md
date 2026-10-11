@@ -336,7 +336,15 @@ Decided with Nikhil in a brainstorm on 2026-10-07. Where this section and an ear
 2. One screen: drop or pick clips; they appear as a list with thumbnail and duration and a total at the bottom; drag to reorder; click a clip to preview it; a name field pre-filled from the first file name. One button: Create project.
 3. The project opens in the three-pane layout with a first chat thread, and the pipeline starts. Progress cards appear in that thread.
 
-Clips are fixed at creation in version 1. Adding or reordering clips after the plan exists is after v1 (it would invalidate word indexes).
+After creation, version 1 allows only **Add clip at the end** (decided with Nikhil 2026-10-07, he records in parts). Appending never shifts existing word indexes, so every plan version and history entry stays valid:
+
+1. Probe, proxy and transcribe run for the new clip only.
+2. `merge` appends its words after the last word; earlier clips keep their indexes and offsets.
+3. Nothing is cut in the new clip yet. When its transcript is ready, the agent asks in the open thread what to do with it, like Claude Code asking before it acts: "Clip 3 is ready (2:14). What should I do with it?" with suggested replies: "Edit it like the rest", "Only cut silences", "Keep it as is". This question is fixed text shown by the client, no AI call.
+4. The user picks a reply or types their own. It goes to `POST /api/chat` like any message, and the agent acts with the normal tools (a new plan version, or just a reply). Until then the plan is unchanged and every word of the new clip is kept.
+5. A `clip_added` history entry ("added clip 3, 2:14"), no file name.
+
+Inserting between clips, reordering and removing clips after the plan exists stay after v1 (they would shift word indexes).
 
 ### Clips in the project folder
 
@@ -355,7 +363,7 @@ Clips are fixed at creation in version 1. Adding or reordering clips after the p
 
 ### History log
 
-- `history.jsonl` in the project folder, append-only, one JSON object per line: `{id, at, actor, type, summary, planVersion}`. `actor` is `pipeline`, `user` or `thread:<threadId>`. Types: `project_created`, `stage_done`, `plan_created`, `plan_restored`, `segment_flipped`, `audio_changed`, `captions_changed`, `export_done`, `thread_created`.
+- `history.jsonl` in the project folder, append-only, one JSON object per line: `{id, at, actor, type, summary, planVersion}`. `actor` is `pipeline`, `user` or `thread:<threadId>`. Types: `project_created`, `stage_done`, `plan_created`, `plan_restored`, `segment_flipped`, `audio_changed`, `captions_changed`, `export_done`, `thread_created`, `clip_added`.
 - Summaries are short and human readable ("cut the second pricing explanation, 12:04 → 11:20"). They never contain file names or paths, because the last 30 entries are sent to the server with every chat request so a thread knows what other threads already did.
 - The History tab shows the log as a timeline, newest first, Figma style. Entries with a plan version have Restore, which creates a new version and a `plan_restored` entry.
 

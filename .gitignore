@@ -21,3 +21,6 @@ node_modules/
 
 # macOS
 .DS_Store
+
+# Personal learning notes, local only
+docs/learning/
