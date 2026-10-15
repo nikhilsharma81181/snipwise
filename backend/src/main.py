@@ -10,6 +10,7 @@ from src.auth.router import router as auth_router
 from src.config import settings
 from src.database import engine
 from src.exceptions import register_exception_handlers
+from src.plan.router import router as plan_router
 from src.redis_client import redis_client
 from src.users.router import router as users_router
 
@@ -49,6 +50,7 @@ register_exception_handlers(app)
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
+app.include_router(plan_router, prefix="/api")
 
 
 @app.get("/api/health", tags=["health"])

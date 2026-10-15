@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     redis_url: RedisDsn
     frontend_origin: str = "http://localhost:3000"
     free_minutes_per_month: int = 60
+    ai_rate_limit_per_minute: int = 20
 
 
 settings = Settings()  # pyright: ignore[reportCallIssue]
