@@ -38,12 +38,17 @@ Both talking-head and screen recordings go through the same cut pipeline in vers
 
 1. Face-centred reframing for talking heads (a small Swift CLI helper that prints face boxes per sampled frame).
 2. Screen-recording rules: a silence is only cut when the frames are static during it; automatic zooms toward on-screen change.
-3. Stripe subscriptions and credits.
-4. Rendered preview (a fast proxy render per plan) if segment-skipping preview proves too rough.
-5. Auto-update (electron-updater).
-6. Motion-graphic text overlays.
+3. Motion-graphic overlays added onto the user's footage (text, callouts, simple animated titles). Mainly for teaching and product-review videos. Moved up on 2026-10-22; was last on this list.
+4. Multi-cam product reviews: the agent picks between A-roll, B-roll and a C-cam so the product looks good. Needs sampled frames through a vision model and a shot-matching step, so it is its own pipeline on top of the transcript cuts. Added 2026-10-22; version 1 stays single-cam.
+5. Stripe subscriptions, usage based. Tiers around $20, $50, $100, $200 a month; the only difference between tiers is usage (the daily AI cap). Every feature, every resolution and watermark-free export on every tier. Nothing is gated behind a higher tier. Revised 2026-10-22.
+6. Rendered preview (a fast proxy render per plan) if segment-skipping preview proves too rough.
+7. Auto-update (electron-updater).
 
-Out of scope entirely for now: Windows, Linux, iPad, multi-cam, multi-speaker, faceless or voiceover videos, thumbnail or title generation, script generation, AI colour grading, publishing to platforms, team accounts.
+Out of scope entirely for now: Windows, Linux, iPad, multi-speaker, faceless or voiceover videos, generating video, music or motion graphics from a prompt, thumbnail or title generation, script generation, AI colour grading, publishing to platforms, team accounts.
+
+### Who it is for (added 2026-10-22)
+
+Only people who record with a camera, record their screen, or both, and want the edit done for them: photographers moving into video, videographers, gear and product reviewers (cameras, phones, gadgets, bikes, cars), software developers with a day job starting a channel, teachers recording lectures across many takes. Not motor vlogs or any footage with no speech to anchor the cut on. The agent prompts, evals and defaults are tuned for these inputs only. Interaction model: everything through chat, plus manual controls for small tweaks (the Claude Design analogy). The product does one thing for one audience and goes deep on it, the way Linear does against Jira.
 
 ## 3. Stack
 
@@ -367,3 +372,38 @@ Inserting between clips, reordering and removing clips after the plan exists sta
 - Summaries are short and human readable ("cut the second pricing explanation, 12:04 → 11:20"). They never contain file names or paths, because the last 30 entries are sent to the server with every chat request so a thread knows what other threads already did.
 - The History tab shows the log as a timeline, newest first, Figma style. Entries with a plan version have Restore, which creates a new version and a `plan_restored` entry.
 
+
+## 16. Amendment 2026-10-22: production patterns on the server
+
+Decided with Nikhil on 2026-10-22. Snipwise is a learning project, but the server is built the way a team would build it for a very large number of users, so the foundation never needs a rewrite and every choice can be defended in an interview. The reference is the anonymised guide to his company's production backend (`backend-prototype/PATTERNS_REPORT.md`, section numbers below point into it). Two rules: we copy its section 7.1 patterns, not its section 7.2 tech debt; and every pattern needs a real job in Snipwise.
+
+### Phase A: foundation, before any new feature
+
+1. **Repository layer, the service owns the transaction.** Each module gets `repository.py` with query functions that only flush. Services call them and commit once per use case. Side effects run after commit. (3.1)
+2. **Error catalog.** Each domain declares error specs with a code, HTTP status, log level and a safe message; one handler renders all of them. The `{code, message}` response shape stays (no success envelope; HTTP status plus the resource, like Stripe and GitHub). (3.4)
+3. **CHECK constraints on string status columns** (`users.role`, `usage_events.kind`), so the database rejects values the code would never write. (4.2)
+4. **Tests build the database by running the migrations**, not `create_all`. A test asserts a single Alembic head. A fixture fails the run if a test leaves a `dependency_overrides` entry behind. (3.8)
+5. **Structured JSON logs with a request ID** on every line and in an `X-Request-ID` response header, a redaction helper (no tokens, passwords or transcript text in logs), and separate `GET /api/health/alive` and `GET /api/health/ready` (database and Redis). (3.7)
+
+### Phase B: with the AI endpoints
+
+6. **`Idempotency-Key` header** on `POST /api/plan` and `POST /api/chat`. A retry with the same key returns the stored response and spends no tokens. Backed by a unique constraint, not only a cache marker. (4.4)
+7. **A race-safe daily cap.** Two requests at the same moment cannot both pass the cap check: the check and the usage write are serialised per user. (4.5)
+8. **Provider adapter** in `src/integrations/gemini/` with connect and read timeouts, and retries with backoff and jitter for transient errors only. (3.3)
+
+### Phase C: background work
+
+9. **A Postgres job queue** (`jobs` table, claimed with `FOR UPDATE SKIP LOCKED`, partial index on pending rows) and a worker process. First jobs: delete expired refresh tokens in small batches, and send emails. (3.6, 4.7)
+10. **Transactional outbox.** The "account deleted" confirmation email is enqueued in the same transaction as the delete, so it is never sent for a delete that rolled back. (6.3)
+11. **Prometheus metrics** for requests, latency and AI tokens, labelled by route template. (3.7)
+
+### Phase D: deploy
+
+Multi-stage Docker image; CI runs Ruff, a type checker, the tests and the migrations before deploy; expand/contract migrations; indexes on large tables built `CONCURRENTLY`. (4.1)
+
+### Not adopted, and why
+
+- Money ledgers: no money until Stripe after v1. When it comes: integer minor units and an append-only ledger.
+- Soft deletes: GDPR erasure must really delete.
+- Celery next to a database queue: one durable queue, as the guide itself recommends (7.2).
+- A success envelope `{error, message, data}`: a team convention, not a scale need.

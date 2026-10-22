@@ -6,6 +6,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import src.auth.models
+import src.usage.models
 import src.users.models  # noqa: F401
 from alembic import context
 from src.config import settings

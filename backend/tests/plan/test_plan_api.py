@@ -1,38 +1,7 @@
-import json
-
-import pytest
-
 from src.config import settings
-from src.main import app
-from src.plan.llm import get_llm
 from tests.conftest import make_user
-from tests.fakes import FakeLLM
-
-TEXT = "So um today we build uh today we will build an app"
-BODY = {
-    "words": [
-        {"text": t, "start": i * 0.5, "end": i * 0.5 + 0.4}
-        for i, t in enumerate(TEXT.split())
-    ],
-    "options": {"silences": True, "fillers": True, "bestTake": True, "zooms": True},
-}
-GOOD = json.dumps(
-    {
-        "drops": [
-            {"startWord": 1, "endWord": 1, "reason": "filler"},
-            {"startWord": 2, "endWord": 5, "reason": "retake"},
-        ]
-    }
-)
-
-
-# swaps the real AI for a fake one for the length of a test
-@pytest.fixture
-def llm():
-    fake = FakeLLM()
-    app.dependency_overrides[get_llm] = lambda: fake
-    yield fake
-    app.dependency_overrides.clear()
+from tests.fakes import GOOD_ANSWER as GOOD
+from tests.fakes import PLAN_BODY as BODY
 
 
 async def test_plan_needs_login(client, llm):

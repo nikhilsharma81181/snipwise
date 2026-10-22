@@ -14,11 +14,14 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
 import src.auth.models
+import src.usage.models
 import src.users.models  # noqa: F401
 from src.database import SessionLocal, engine
 from src.main import app
 from src.models import Base
+from src.plan.llm import get_llm
 from src.redis_client import redis_client
+from tests.fakes import FakeLLM
 
 # belt and braces: refuse to run if we somehow ended up on the dev db
 assert engine.url.database == "snipwise_test", (
@@ -89,3 +92,12 @@ async def user_headers(client):
 @pytest.fixture
 async def other_headers(client):
     return await make_user(client, "b@test.com")
+
+
+# swaps the real AI for a fake one for the length of a test
+@pytest.fixture
+def llm():
+    fake = FakeLLM()
+    app.dependency_overrides[get_llm] = lambda: fake
+    yield fake
+    app.dependency_overrides.clear()

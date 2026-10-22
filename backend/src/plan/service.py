@@ -1,11 +1,16 @@
 import logging
+import uuid
 
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.plan.llm import LLMClient, LLMError
 from src.plan.schemas import Drop, PlanOptions, PlanResponse, Word
 from src.plan.validation import InvalidPlan, validate_drops
 from src.schemas import CamelModel
+from src.usage import service as usage_service
+from src.usage.metered import MeteredLLM
+from src.usage.models import UsageKind
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +20,21 @@ MAX_ATTEMPTS = 2  # the first try plus one retry with the error
 # the JSON we ask the model for
 class _ModelAnswer(CamelModel):
     drops: list[Drop]
+
+
+async def plan_for_user(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    llm: LLMClient,
+    words: list[Word],
+    options: PlanOptions,
+) -> PlanResponse:
+    # over the daily cap: no AI call, the Mac still cuts silences
+    if await usage_service.is_over_cap(db, user_id):
+        return PlanResponse(drops=[], fallback_used=True, fallback_reason="daily_cap")
+
+    metered = MeteredLLM(llm, db, user_id, UsageKind.PLAN)
+    return await make_plan(metered, words, options)
 
 
 async def make_plan(
