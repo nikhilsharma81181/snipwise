@@ -1,5 +1,6 @@
 import logging
 import traceback
+from dataclasses import dataclass
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -10,75 +11,79 @@ from src.config import settings
 
 logger = logging.getLogger(__name__)
 
+# every error code in the app, filled in as each ErrorSpec is created
+CATALOG: dict[str, ErrorSpec] = {}
+
+
+@dataclass(frozen=True)
+class ErrorSpec:
+    code: str  # what the client branches on, never change it once shipped
+    http_status: int
+    message: str  # safe to show the user, can have {placeholders}
+    log_level: int = logging.INFO
+
+    def __post_init__(self):
+        if self.code in CATALOG:
+            raise ValueError(f"duplicate error code: {self.code}")
+        CATALOG[self.code] = self
+
 
 class AppError(Exception):
-    status_code = 500
-    code = "internal_error"
-    message = "Something went wrong"
-
-    def __init__(self, message: str | None = None):
-        if message:
-            self.message = message
+    def __init__(
+        self,
+        spec: ErrorSpec,
+        params: dict | None = None,
+        headers: dict[str, str] | None = None,
+    ):
+        self.spec = spec
+        self.message = spec.message.format(**(params or {}))
+        self.headers = headers
         super().__init__(self.message)
 
 
-class BadRequest(AppError):
-    status_code = 400
-    code = "bad_request"
-    message = "Bad request"
+# shared errors, each domain keeps its own in <domain>/exceptions.py
+INTERNAL_ERROR = ErrorSpec("internal_error", 500, "Something went wrong", logging.ERROR)
+VALIDATION_ERROR = ErrorSpec("validation_error", 422, "Invalid request data")
+ROUTE_NOT_FOUND = ErrorSpec("not_found", 404, "Route not found: {method} {path}")
+RATE_LIMITED = ErrorSpec(
+    "rate_limited",
+    429,
+    "Too many requests, try again in {seconds}s",
+    logging.WARNING,
+)
 
 
-class Unauthorized(AppError):
-    status_code = 401
-    code = "unauthorized"
-    message = "Authentication required"
-
-
-class Forbidden(AppError):
-    status_code = 403
-    code = "forbidden"
-    message = "Forbidden"
-
-
-class NotFound(AppError):
-    status_code = 404
-    code = "not_found"
-    message = "Not found"
-
-
-class Conflict(AppError):
-    status_code = 409
-    code = "conflict"
-    message = "Conflict"
-
-
-class PayloadTooLarge(AppError):
-    status_code = 413
-    code = "payload_too_large"
-    message = "File is too large"
-
-
-class TooManyRequests(AppError):
-    status_code = 429
-    code = "rate_limited"
-    message = "Too many requests, try again in a minute"
-
-
-def _error_response(status_code: int, code: str, message: str, **extra) -> JSONResponse:
+def _error_response(
+    status_code: int, code: str, message: str, headers=None, **extra
+) -> JSONResponse:
     return JSONResponse(
-        status_code=status_code, content={"code": code, "message": message, **extra}
+        status_code=status_code,
+        content={"code": code, "message": message, **extra},
+        headers=headers,
     )
 
 
 async def app_error_handler(request: Request, exc: AppError):
-    return _error_response(exc.status_code, exc.code, exc.message)
+    spec = exc.spec
+    logger.log(
+        spec.log_level,
+        "%s %s -> %d %s",
+        request.method,
+        request.url.path,
+        spec.http_status,
+        spec.code,
+        # stack trace only for real failures, a wrong password doesn't need one
+        exc_info=spec.log_level >= logging.ERROR,
+    )
+    return _error_response(spec.http_status, spec.code, exc.message, exc.headers)
 
 
 async def http_error_handler(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 404:
-        return _error_response(
-            404, "not_found", f"Route not found: {request.method} {request.url.path}"
+        message = ROUTE_NOT_FOUND.message.format(
+            method=request.method, path=request.url.path
         )
+        return _error_response(404, ROUTE_NOT_FOUND.code, message)
     return _error_response(exc.status_code, "http_error", str(exc.detail))
 
 
@@ -88,7 +93,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         field = ".".join(str(p) for p in err["loc"][1:])
         issues.append({"field": field, "message": err["msg"]})
     return _error_response(
-        422, "validation_error", "Invalid request data", issues=issues
+        422, VALIDATION_ERROR.code, VALIDATION_ERROR.message, issues=issues
     )
 
 
@@ -97,7 +102,7 @@ async def unhandled_error_handler(request: Request, exc: Exception):
     extra = {}
     if settings.environment == "development":
         extra["stack"] = traceback.format_exception(exc)
-    return _error_response(500, "internal_error", "Something went wrong", **extra)
+    return _error_response(500, INTERNAL_ERROR.code, INTERNAL_ERROR.message, **extra)
 
 
 def register_exception_handlers(app: FastAPI) -> None:

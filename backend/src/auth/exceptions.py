@@ -1,31 +1,8 @@
-from src.exceptions import Conflict, Forbidden, Unauthorized
+from src.exceptions import ErrorSpec
 
-
-class InvalidCredentials(Unauthorized):
-    code = "invalid_credentials"
-    message = "Invalid email or password"
-
-
-class EmailAlreadyExists(Conflict):
-    code = "email_exists"
-    message = "Email already exists"
-
-
-class InvalidRefreshToken(Unauthorized):
-    code = "invalid_refresh_token"
-    message = "Invalid refresh token"
-
-
-class AuthenticationRequired(Unauthorized):
-    code = "unauthorized"
-    message = "Authentication required"
-
-
-class InvalidAccessToken(Unauthorized):
-    code = "invalid_token"
-    message = "Invalid or expired token"
-
-
-class SignupClosed(Forbidden):
-    code = "signup_closed"
-    message = "Sign-ups are closed for the beta"
+INVALID_CREDENTIALS = ErrorSpec("invalid_credentials", 401, "Invalid email or password")
+EMAIL_EXISTS = ErrorSpec("email_exists", 409, "Email already exists")
+INVALID_REFRESH_TOKEN = ErrorSpec("invalid_refresh_token", 401, "Invalid refresh token")
+AUTHENTICATION_REQUIRED = ErrorSpec("unauthorized", 401, "Authentication required")
+INVALID_ACCESS_TOKEN = ErrorSpec("invalid_token", 401, "Invalid or expired token")
+SIGNUP_CLOSED = ErrorSpec("signup_closed", 403, "Sign-ups are closed for the beta")

@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.users import repository
 from src.users.models import User
 
 
@@ -11,5 +12,5 @@ async def minutes_used_this_month(db: AsyncSession, user_id: uuid.UUID) -> float
 
 
 async def delete_user(db: AsyncSession, user: User) -> None:
-    await db.delete(user)
+    await repository.delete(db, user)
     await db.commit()

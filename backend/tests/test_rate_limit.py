@@ -24,6 +24,16 @@ async def test_auth_routes_limited_per_ip(client, monkeypatch):
     assert res.json()["code"] == "rate_limited"
 
 
+async def test_429_says_when_to_retry(client, monkeypatch):
+    monkeypatch.setattr(auth_settings, "rate_limit_per_minute", 1)
+    await client.post("/api/auth/login", json=WRONG_LOGIN)
+    res = await client.post("/api/auth/login", json=WRONG_LOGIN)
+
+    seconds = int(res.headers["retry-after"])
+    assert 0 < seconds <= 60
+    assert f"{seconds}s" in res.json()["message"]
+
+
 async def test_other_ip_has_its_own_limit(client, monkeypatch):
     monkeypatch.setattr(auth_settings, "rate_limit_per_minute", 1)
     await client.post("/api/auth/login", json=WRONG_LOGIN)

@@ -2,13 +2,14 @@ import time
 
 from redis.exceptions import RedisError
 
-from src.exceptions import TooManyRequests
+from src.exceptions import RATE_LIMITED, AppError
 from src.redis_client import redis_client
 
 
 # fixed window: one counter per key per minute, redis deletes it when the minute is over
 async def check_rate_limit(key: str, limit: int, window_seconds: int = 60) -> None:
-    window = int(time.time() // window_seconds)
+    now = time.time()
+    window = int(now // window_seconds)
     redis_key = f"rl:{key}:{window}"
 
     try:
@@ -20,4 +21,10 @@ async def check_rate_limit(key: str, limit: int, window_seconds: int = 60) -> No
         return
 
     if count > limit:
-        raise TooManyRequests()
+        # seconds until this window ends and the counter starts again
+        seconds = window_seconds - int(now % window_seconds)
+        raise AppError(
+            RATE_LIMITED,
+            params={"seconds": seconds},
+            headers={"Retry-After": str(seconds)},
+        )

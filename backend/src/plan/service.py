@@ -34,7 +34,10 @@ async def plan_for_user(
         return PlanResponse(drops=[], fallback_used=True, fallback_reason="daily_cap")
 
     metered = MeteredLLM(llm, db, user_id, UsageKind.PLAN)
-    return await make_plan(metered, words, options)
+    plan = await make_plan(metered, words, options)
+    # one commit for the whole request: saves every usage row, fallbacks included
+    await db.commit()
+    return plan
 
 
 async def make_plan(
